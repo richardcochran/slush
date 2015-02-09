@@ -1,0 +1,14 @@
+
+* Introduction
+
+  This software is a simple utility for testing a serial port.  It
+  reads from the standard input and writes to a serial port.  Often I
+  wondered why no one ever published such a tool before.  I myself have
+  need such a thing when developing embedded systems.  Anyhow, here it
+  is now, for you to enjoy.
+
+* License
+
+  The software is copyrighted by the authors and is licensed under the
+  GNU General Public License. See the file, COPYING, for details of the
+  license terms.
