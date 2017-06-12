@@ -18,13 +18,16 @@
  */
 #include <ctype.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <poll.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <termios.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -34,7 +37,7 @@
 #define BPS	115200
 #define BUFLEN	1024
 
-static int annotate, debug;
+static int annotate, debug, trace;
 
 static int open_serial(char* name, tcflag_t baud, int icrnl, int hwfc)
 {
@@ -69,7 +72,7 @@ static int open_serial(char* name, tcflag_t baud, int icrnl, int hwfc)
 	}
 
 	/* Local Modes */
-	if (!debug) {
+	if (!debug && !trace) {
 		nterm.c_lflag = ICANON; /* Enable canonical mode */
 	}
 
@@ -96,6 +99,43 @@ static void debug_show_reply(char *buf, int len)
 	printf("\n");
 }
 
+static uint64_t timestamp(void)
+{
+	struct timespec ts;
+	uint64_t val;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	val = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+	val /= 1000000ULL;
+
+	return val;
+}
+
+static void trace_show_reply(char *buf, int len)
+{
+	static uint64_t lastts, total;
+	uint64_t diff, now;
+	char c;
+	int i;
+
+	now = timestamp();
+	if (lastts) {
+		diff = now - lastts;
+		total += diff;
+	} else {
+		diff = 0;
+	}
+	lastts = now;
+
+	printf("%" PRId64 " %" PRId64 " ", total, diff);
+
+	for (i = 0; i < len; i++) {
+		c = buf[i];
+		printf("%c", isprint(c) ? c : '.');
+	}
+	printf("\n");
+}
+
 static int read_reply(int fd)
 {
 	char reply[BUFLEN] = {0};
@@ -109,6 +149,8 @@ static int read_reply(int fd)
 
 	if (debug) {
 		debug_show_reply(reply, cnt);
+	} else if (trace) {
+		trace_show_reply(reply, cnt);
 	} else if (annotate) {
 		printf("read %2d bytes {%s}\n", cnt, reply);
 	} else {
@@ -130,7 +172,8 @@ static void usage(char* progname)
 		"  -f          enable hardware flow control\n"
 		"  -h          prints this message\n"
 		"  -o [0,1,2]  NL mapping on output, 0=none 1=CR 2=CRNL\n"
-		"  -p [file]   serial port device to open, default: '%s'\n",
+		"  -p [file]   serial port device to open, default: '%s'\n"
+		"  -t          trace mode, with relative time stamps\n",
 		progname, BPS, DEVICE);
 }
 
@@ -144,7 +187,7 @@ int main(int argc,char *argv[])
 	/* Handle the command line arguments. */
 	progname = strrchr(argv[0],'/');
 	progname = progname ? 1+progname : argv[0];
-	while (EOF != (c = getopt(argc, argv, "ab:cdfho:p:"))) {
+	while (EOF != (c = getopt(argc, argv, "ab:cdfho:p:t"))) {
 		switch (c) {
 		case 'a':
 			annotate = 1;
@@ -166,6 +209,9 @@ int main(int argc,char *argv[])
 			break;
 		case 'p':
 			device = optarg;
+			break;
+		case 't':
+			trace = 1;
 			break;
 		case 'h':
 			usage(progname);
